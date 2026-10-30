@@ -1,0 +1,13 @@
+# gerados
+build/
+dist/
+__pycache__/
+*.pyc
+firmware/*/.pio/
+firmware/*/.vscode/
+
+# dados locais do usuario (no programa ficam em %LOCALAPPDATA%\Humanoide)
+config/biblioteca.json
+config/equilibrio.json
+config/esp32_simulada_nvs.json
+*.log

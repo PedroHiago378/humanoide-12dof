@@ -1,0 +1,6 @@
+numpy
+aiohttp
+pyserial
+# so para reconverter o STEP:
+# cadquery-ocp
+# trimesh

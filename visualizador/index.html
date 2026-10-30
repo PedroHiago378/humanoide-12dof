@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Humanoide 12 DOF</title>
+<style>
+  :root {
+    --bg: #14171c; --painel: #1c2027; --borda: #2c323c; --texto: #e3e6eb; --fraco: #8b93a1;
+    --acento: #4f9cf9; --ok: #3fb950; --erro: #f85149; --aviso: #d29922;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--texto);
+    font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; overflow: hidden; }
+  #cena { position: fixed; inset: 0 340px 0 0; }
+  #painel { position: fixed; top: 0; right: 0; bottom: 0; width: 340px; overflow-y: auto;
+    background: var(--painel); border-left: 1px solid var(--borda); padding: 12px 14px 24px; }
+  h1 { font-size: 15px; margin: 0 0 2px; }
+  h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--fraco);
+    margin: 16px 0 6px; font-weight: 600; }
+  .sub { color: var(--fraco); font-size: 12px; }
+  .linha { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  button, select { background: #262b34; color: var(--texto); border: 1px solid var(--borda);
+    border-radius: 6px; padding: 5px 9px; font: inherit; cursor: pointer; }
+  button:hover { border-color: var(--acento); }
+  button.ativo { background: var(--acento); border-color: var(--acento); color: #fff; }
+  label.chk { display: flex; gap: 6px; align-items: center; color: var(--fraco); cursor: pointer; }
+  .junta { display: grid; grid-template-columns: 104px 1fr 46px; gap: 6px; align-items: center;
+    padding: 2px 0; border-radius: 4px; }
+  .junta:hover { background: #232832; }
+  .junta span.nome { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .junta input[type=range] { width: 100%; accent-color: var(--acento); }
+  .junta .val { font-variant-numeric: tabular-nums; text-align: right; font-size: 12px; }
+  .torque { grid-column: 2 / 4; height: 3px; background: #262b34; border-radius: 2px; position: relative; display: none; }
+  .torque i { position: absolute; top: 0; bottom: 0; left: 50%; background: var(--aviso); }
+  body.ws .torque { display: block; }
+  .info { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; font-variant-numeric: tabular-nums; }
+  .info b { font-weight: 500; color: var(--fraco); }
+  #status { display: inline-flex; gap: 6px; align-items: center; font-size: 12px; color: var(--fraco); }
+  #status::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--fraco); }
+  #status.on::before { background: var(--ok); }
+  #status.off::before { background: var(--erro); }
+  details.cfg { margin-top: 8px; border: 1px solid var(--borda); border-radius: 6px; padding: 6px 8px; }
+  details.cfg summary { cursor: pointer; color: var(--texto); font-weight: 500; }
+  details.cfg[open] summary { margin-bottom: 6px; }
+  details.cfg .linha { margin: 4px 0; }
+  details.cfg input[type=number] { background: #262b34; color: var(--texto); border: 1px solid var(--borda);
+    border-radius: 6px; padding: 4px 6px; font: inherit; }
+  button:disabled, select:disabled { opacity: .45; cursor: default; }
+  .dica { color: var(--fraco); font-size: 11.5px; margin: 4px 0; }
+  #cfgTabela { width: 100%; border-collapse: collapse; margin-top: 6px; font-size: 11.5px; font-variant-numeric: tabular-nums; }
+  #cfgTabela th { color: var(--fraco); font-weight: 500; text-align: right; padding: 2px 3px; }
+  #cfgTabela td { text-align: right; padding: 2px 3px; border-top: 1px solid var(--borda); cursor: pointer; }
+  #cfgTabela td:nth-child(2), #cfgTabela th:nth-child(2) { text-align: left; }
+  #cfgTabela tr.sel td { background: #24324a; }
+  #cfgTabela tr.off td { color: var(--fraco); text-decoration: line-through; }
+  #cfgTabela tr.sat td:first-child { color: var(--erro); }
+  #hwLog { margin: 6px 0 0; max-height: 110px; overflow: auto; font-size: 11px; color: var(--fraco);
+    background: #161a20; border-radius: 4px; padding: 4px 6px; white-space: pre-wrap; }
+  #carregando { position: fixed; inset: 0 340px 0 0; display: grid; place-items: center; color: var(--fraco); }
+  input[type=number], input[type=text] { background: #262b34; color: var(--texto); border: 1px solid var(--borda);
+    border-radius: 6px; padding: 4px 6px; font: inherit; min-width: 0; }
+  input:disabled { opacity: .45; }
+
+  /* poses */
+  .chip { display: inline-flex; }
+  .chip button { border-radius: 6px; }
+  .chip.usuario .ir { border-radius: 6px 0 0 6px; border-color: #3b4a63; }
+  .chip .x { border-radius: 0 6px 6px 0; border-left: 0; padding: 5px 7px; color: var(--fraco); border-color: #3b4a63; }
+  .chip .x:hover { color: var(--erro); }
+
+  /* linha do tempo */
+  :root { --lt-altura: 270px; }
+  #cena { bottom: var(--lt-altura); }
+  body.lt-fechada #cena { bottom: 38px; }
+  #linhaTempo { position: fixed; left: 0; right: 340px; bottom: 0; height: var(--lt-altura);
+    background: var(--painel); border-top: 1px solid var(--borda); display: flex; flex-direction: column; }
+  body.lt-fechada #linhaTempo { height: 38px; }
+  body.lt-fechada .lt-corpo, body.lt-fechada .lt-so-aberta { display: none; }
+  .lt-barra { display: flex; gap: 6px; align-items: center; padding: 5px 10px; border-bottom: 1px solid var(--borda);
+    flex-wrap: nowrap; overflow-x: auto; min-height: 37px; }
+  .lt-barra .sep { width: 1px; align-self: stretch; background: var(--borda); margin: 0 2px; }
+  .lt-barra #animNome { width: 150px; }
+  #animNome.sujo { border-color: var(--aviso); }
+  #animTocar { min-width: 38px; }
+  .tempo { font-variant-numeric: tabular-nums; color: var(--fraco); white-space: nowrap; margin-left: auto; }
+  .lt-corpo { flex: 1; display: flex; flex-direction: column; min-height: 0; padding: 4px 10px 8px; gap: 6px; }
+  #ltCanvas { width: 100%; height: 54px; display: block; cursor: pointer; touch-action: none;
+    background: #171a20; border-radius: 6px; }
+  .lt-grade { flex: 1; display: grid; grid-template-columns: minmax(250px, 330px) 1fr; gap: 12px; min-height: 0; }
+  .lt-col { display: flex; flex-direction: column; gap: 5px; min-height: 0; }
+  .lt-col .linha { flex-wrap: nowrap; }
+  .lt-col select { min-width: 0; flex: 1; }
+  #kfT { width: 70px; }
+  #curvaCanvas { flex: 1; width: 100%; min-height: 60px; display: block; background: #171a20; border-radius: 6px; }
+  #curvaInfo { white-space: nowrap; }
+  .eixo { border-top: 1px solid var(--borda); margin-top: 8px; padding-top: 6px; }
+  .eixo .ganhos { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; margin: 4px 0; }
+  .eixo .ganhos label { display: flex; flex-direction: column; font-size: 11px; color: var(--fraco); }
+  .eixo .ganhos input { width: 100%; }
+  .eixo .jlinha { display: grid; grid-template-columns: 1fr 62px 28px; gap: 4px; margin: 3px 0; }
+  .eixo .jlinha select { min-width: 0; }
+  .eixo .barra { height: 4px; background: #262b34; border-radius: 2px; position: relative; margin: 4px 0; }
+  .eixo .barra i { position: absolute; top: 0; bottom: 0; left: 50%; background: var(--acento); }
+  #eqStatus.queda { color: var(--erro); }
+  #aviso { position: fixed; left: 50%; top: 14px; transform: translateX(-50%); background: #3a2a10; color: #f6d38b;
+    border: 1px solid var(--aviso); border-radius: 8px; padding: 6px 12px; display: none; z-index: 10; }
+
+  @media (max-width: 760px) {
+    #cena, #carregando { inset: 0 0 45vh 0; }
+    #painel { top: 55vh; width: 100%; border-left: 0; border-top: 1px solid var(--borda); }
+    #cena { bottom: calc(45vh + var(--lt-altura)); }
+    body.lt-fechada #cena { bottom: calc(45vh + 38px); }
+    #linhaTempo { right: 0; bottom: 45vh; }
+    .lt-corpo { overflow-y: auto; }
+    .lt-grade { display: flex; flex-direction: column; flex: none; }
+    #curvaCanvas { flex: none; height: 110px; }
+  }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "./vendor/three.module.js",
+  "three/addons/": "./vendor/addons/"
+} }
+</script>
+</head>
+<body>
+<div id="cena"></div>
+<div id="carregando">Carregando modelo...</div>
+<div id="aviso"></div>
+
+<section id="linhaTempo">
+  <div class="lt-barra">
+    <button id="ltRecolher" title="Mostrar/esconder a linha do tempo">Animacao &#9662;</button>
+    <select id="animLista" title="Animacoes salvas"></select>
+    <input type="text" id="animNome" placeholder="nome da animacao">
+    <button id="animSalvar">salvar</button>
+    <button id="animNova">nova</button>
+    <button id="animApagar" class="lt-so-aberta">apagar</button>
+    <button id="animExportar" class="lt-so-aberta" title="Baixar como .json">exportar</button>
+    <button id="animImportar" class="lt-so-aberta" title="Abrir um .json">importar</button>
+    <input type="file" id="animArquivo" accept=".json,application/json" hidden>
+    <span class="sep"></span>
+    <button id="animTocar" title="tocar (espaco)">&#9654;</button>
+    <button id="animParar" title="parar e voltar ao inicio">&#9632;</button>
+    <label class="chk"><input type="checkbox" id="animLoop"> repetir</label>
+    <span class="tempo" id="animTempo">0.00 / 0.00 s</span>
+  </div>
+  <div class="lt-corpo">
+    <canvas id="ltCanvas" title="Clique/arraste para mover o cursor; arraste um keyframe para muda-lo de tempo (shift = sem encaixe)"></canvas>
+    <div class="lt-grade">
+      <div class="lt-col">
+        <div class="linha">
+          <button id="kfAdd" title="Grava a pose atual dos sliders no cursor e avanca 1 s">+ keyframe</button>
+          <button id="kfAtualizar" title="Troca a pose do keyframe selecionado pela pose atual">atualizar pose</button>
+          <button id="kfApagar">apagar</button>
+        </div>
+        <div class="linha">
+          <span class="sub">tempo</span><input type="number" id="kfT" step="0.05" min="0"><span class="sub">s</span>
+        </div>
+        <div class="linha">
+          <span class="sub" title="Forma do trecho que chega neste keyframe">chegada</span><select id="kfInterp"></select>
+        </div>
+        <div class="linha">
+          <span class="sub">padrao</span><select id="animInterp" title="Interpolacao padrao da animacao"></select>
+        </div>
+      </div>
+      <div class="lt-col">
+        <div class="linha">
+          <span class="sub">curva</span>
+          <select id="curvaJunta" title="Junta mostrada no grafico"></select>
+          <select id="curvaInterp" title="Interpolacao so desta junta (sobrepoe o keyframe)"></select>
+          <span class="sub" id="curvaInfo"></span>
+        </div>
+        <canvas id="curvaCanvas"></canvas>
+      </div>
+    </div>
+  </div>
+</section>
+<aside id="painel">
+  <h1>Humanoide 12 DOF</h1>
+  <div class="sub" id="resumo"></div>
+
+  <h2>Conexao</h2>
+  <div class="linha">
+    <span id="status">offline (modo local)</span>
+  </div>
+  <div class="linha" style="margin-top:6px">
+    <select id="controlador" disabled title="Controlador ativo no servidor"></select>
+    <label class="chk"><input type="checkbox" id="comandar" disabled> sliders comandam</label>
+  </div>
+
+  <h2>ESP32</h2>
+  <div class="linha">
+    <select id="hwPorta" disabled style="flex:1;min-width:0"></select>
+    <button id="hwAtualizar" disabled title="Procurar portas">&#8635;</button>
+    <button id="hwConectar" disabled>conectar</button>
+  </div>
+  <div class="sub" id="hwStatus" style="margin-top:4px">desconectada</div>
+  <label class="chk" style="margin-top:4px"><input type="checkbox" id="hwSeguir" disabled> enviar movimento aos servos (modo RUN)</label>
+
+  <details id="cfgPainel" class="cfg">
+    <summary>Configurar servos</summary>
+    <div class="linha">
+      <span class="sub">Modo</span>
+      <button id="modoRun" data-modo="RUN">RUN</button>
+      <button id="modoCfg" data-modo="CFG">CFG</button>
+      <span class="sub" id="cfgSujo"></span>
+    </div>
+    <p class="dica">Em CFG os limites ficam livres (vel. maxima 60&deg;/s) e so o canal escolhido se mexe.
+      Mova o servo ate o fim de curso, espere parar e marque.</p>
+    <div class="linha">
+      <span class="sub">Canal</span>
+      <select id="cfgCanal"></select>
+      <button id="cfgWiggle" title="Balanca +-8 graus para voce ver qual junta e">identificar</button>
+      <label class="chk"><input type="checkbox" id="cfgEn"> ativo</label>
+    </div>
+    <div class="junta" style="grid-template-columns: 60px 1fr 46px">
+      <span class="nome">servo</span>
+      <input type="range" id="cfgAng" min="0" max="180" step="1" value="90">
+      <span class="val" id="cfgAngVal">90</span>
+    </div>
+    <div class="linha">
+      <span class="sub">Junta</span>
+      <select id="cfgJunta" style="flex:1;min-width:0"></select>
+      <button id="cfgMap">associar</button>
+    </div>
+    <div class="linha">
+      <button data-cmd="SETMIN">min = atual</button>
+      <button data-cmd="SETZERO">zero = atual</button>
+      <button data-cmd="SETMAX">max = atual</button>
+    </div>
+    <div class="linha">
+      <span class="sub">Sentido</span>
+      <select id="cfgDir"><option value="1">+1</option><option value="-1">-1</option></select>
+      <span class="sub">Vel.</span>
+      <input type="number" id="cfgVel" min="0" max="600" step="10" style="width:64px"> <span class="sub">&deg;/s</span>
+      <button id="cfgAplicar">aplicar</button>
+    </div>
+    <div class="linha">
+      <button id="cfgTestar" title="Vai ao minimo, ao maximo e volta ao zero">testar limites</button>
+      <button id="cfgSalvar">salvar na ESP32</button>
+      <button id="cfgDescartar" title="Recarrega o que esta gravado na flash">descartar</button>
+    </div>
+    <table id="cfgTabela"></table>
+    <pre id="hwLog"></pre>
+  </details>
+
+  <h2>Equilibrio</h2>
+  <div class="linha">
+    <label class="chk"><input type="checkbox" id="eqAtivo"> ativar correcao</label>
+    <button id="eqNivelar" title="Com o robo em pe e parado: define o 'reto' e calibra o giroscopio (1 s)">nivelar</button>
+  </div>
+  <div class="sub" id="eqStatus" style="margin-top:4px">sem IMU</div>
+  <details id="eqPainel" class="cfg">
+    <summary>Configurar equilibrio</summary>
+    <p class="dica">1) Escolha o eixo do sensor que aponta para a frente do robo e clique <b>nivelar</b> com ele em pe.
+      2) Incline o robo com a mao: o modelo 3D deve inclinar igual (senao, inverta o eixo).
+      3) Ative e confira se as juntas empurram <i>contra</i> a queda; senao, troque o sinal do peso.</p>
+    <div class="linha">
+      <span class="sub">frente do sensor</span>
+      <select id="eqFrente"><option>+x</option><option>-x</option><option>+y</option><option>-y</option><option>+z</option><option>-z</option></select>
+      <span class="sub">filtro</span>
+      <input type="number" id="eqAlfa" min="0" max="0.999" step="0.01" style="width:64px" title="peso do giroscopio no filtro complementar">
+    </div>
+    <div class="linha">
+      <label class="chk"><input type="checkbox" id="eqInvPitch"> inverter pitch</label>
+      <label class="chk"><input type="checkbox" id="eqInvRoll"> inverter roll</label>
+    </div>
+    <div id="eqEixos"></div>
+    <div class="linha">
+      <span class="sub" title="Acima dessa inclinacao considera queda e para de corrigir">queda</span>
+      <input type="number" id="eqQueda" min="5" max="90" step="1" style="width:56px"><span class="sub">&deg;</span>
+      <span class="sub" title="Variacao maxima da correcao">taxa max</span>
+      <input type="number" id="eqTaxa" min="10" max="2000" step="10" style="width:64px"><span class="sub">&deg;/s</span>
+    </div>
+    <p class="dica" style="margin-top:8px">Teste sem robo (vale quando nao ha IMU, ou com a porta SIMULADO):</p>
+    <div class="junta" style="grid-template-columns: 60px 1fr 46px">
+      <span class="nome">pitch</span><input type="range" id="eqSimPitch" min="-40" max="40" step="0.5" value="0"><span class="val" id="eqSimPitchV">0</span>
+    </div>
+    <div class="junta" style="grid-template-columns: 60px 1fr 46px">
+      <span class="nome">roll</span><input type="range" id="eqSimRoll" min="-40" max="40" step="0.5" value="0"><span class="val" id="eqSimRollV">0</span>
+    </div>
+  </details>
+
+  <h2>Poses</h2>
+  <div class="linha" id="poses"></div>
+  <div class="linha" style="margin-top:6px">
+    <span class="sub">transicao</span>
+    <input type="number" id="poseDur" value="0.8" min="0" step="0.1" style="width:58px" title="duracao (s)">
+    <span class="sub">s</span>
+    <select id="poseInterp" style="flex:1;min-width:0" title="forma da transicao"></select>
+  </div>
+  <div class="linha" style="margin-top:6px">
+    <input type="text" id="poseNome" placeholder="nome da nova pose" style="flex:1">
+    <button id="poseSalvar" title="Salva a pose atual dos sliders">salvar pose</button>
+  </div>
+
+  <h2>Exibir</h2>
+  <div class="linha">
+    <label class="chk"><input type="checkbox" id="vEixos" checked> eixos das juntas</label>
+    <label class="chk"><input type="checkbox" id="vCom" checked> centro de massa</label>
+    <label class="chk"><input type="checkbox" id="vChao" checked> pes no chao</label>
+    <label class="chk"><input type="checkbox" id="vTransp"> transparente</label>
+  </div>
+
+  <h2>Juntas (graus)</h2>
+  <div id="juntas"></div>
+
+  <h2>Estado</h2>
+  <div class="info" id="info"></div>
+</aside>
+<script type="module" src="app.js"></script>
+</body>
+</html>

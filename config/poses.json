@@ -1,0 +1,19 @@
+{
+  "_comentario": "Poses em graus. Juntas omitidas ficam em 0. Pitch: eixo +Y (esquerda), positivo leva o pe para tras. Roll: eixo +X (frente).",
+  "zero": {},
+  "bracos_baixos": { "cotovelo_L": -80, "cotovelo_R": 80 },
+  "agachar": {
+    "cotovelo_L": -80, "cotovelo_R": 80,
+    "quadril_pitch_L": -30, "joelho_L": 60, "tornozelo_L": -30,
+    "quadril_pitch_R": -30, "joelho_R": 60, "tornozelo_R": -30
+  },
+  "passo": {
+    "cotovelo_L": -80, "cotovelo_R": 80, "ombro_L": 20, "ombro_R": -20,
+    "quadril_pitch_L": -25, "joelho_L": 40, "tornozelo_L": -15,
+    "quadril_pitch_R": 10, "joelho_R": 5, "tornozelo_R": -15
+  },
+  "abrir_pernas": {
+    "cotovelo_L": -80, "cotovelo_R": 80,
+    "quadril_roll_L": 12, "tornozelo_L": 0, "quadril_roll_R": -12
+  }
+}
