@@ -511,6 +511,45 @@ $("cfgTestar").onclick = async () => {
 hwHabilitar();
 conectar();
 
+// ---------------------------------------------------------------- empurrao com o mouse (simulacao MuJoCo)
+// clique (sem arrastar) numa peca do robo: forca naquele ponto, na direcao horizontal em que a camera olha
+const raio = new THREE.Raycaster();
+const setaEmpurrao = new THREE.ArrowHelper(new THREE.Vector3(1, 0, 0), new THREE.Vector3(), 0.08, 0xff5533, 0.025, 0.015);
+setaEmpurrao.visible = false;
+setaEmpurrao.traverse((o) => { if (o.material) { o.material.depthTest = false; o.renderOrder = 11; } });
+scene.add(setaEmpurrao);
+let cliqueIni = null, apagarSeta = 0;
+$("simForca").oninput = () => { $("simForcaV").textContent = `${(+$("simForca").value).toFixed(1)} N`; };
+const modoEmpurrao = () => $("simMouse").checked && $("simLigar").checked && ws?.readyState === 1;
+renderer.domElement.addEventListener("pointerdown", (e) => { cliqueIni = { x: e.clientX, y: e.clientY }; });
+renderer.domElement.addEventListener("pointermove", (e) => {
+  renderer.domElement.style.cursor = modoEmpurrao() && acertar(e) ? "crosshair" : "";
+});
+renderer.domElement.addEventListener("pointerup", (e) => {
+  if (!cliqueIni || Math.hypot(e.clientX - cliqueIni.x, e.clientY - cliqueIni.y) > 5 || !modoEmpurrao()) return;
+  const hit = acertar(e);
+  if (!hit) return;
+  let elo = hit.object;
+  while (elo && !elos[elo.name]) elo = elo.parent;
+  const dir = raio.ray.direction.clone().setZ(0);
+  if (dir.lengthSq() < 1e-6) dir.set(1, 0, 0);   // camera olhando de cima: empurra para frente
+  dir.normalize();
+  const forca = +$("simForca").value * (e.shiftKey ? 2 : 1);
+  enviar({ tipo: "sim_empurrar_ponto", corpo: elo?.name ?? modelo.base, ponto: hit.point.toArray(), direcao: dir.toArray(), forca });
+  const comp = 0.04 + 0.02 * forca;   // a ponta da seta encosta no ponto clicado
+  setaEmpurrao.position.copy(hit.point).addScaledVector(dir, -comp);
+  setaEmpurrao.setDirection(dir);
+  setaEmpurrao.setLength(comp, 0.025, 0.015);
+  setaEmpurrao.visible = true;
+  clearTimeout(apagarSeta);
+  apagarSeta = setTimeout(() => { setaEmpurrao.visible = false; }, 400);
+});
+function acertar(e) {
+  const r = renderer.domElement.getBoundingClientRect();
+  raio.setFromCamera(new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), camera);
+  return raio.intersectObjects(malhas, false)[0];
+}
+
 // camera (e sombra) acompanham o robo que anda livre na simulacao MuJoCo
 function seguir(p) {
   const delta = new THREE.Vector3(p.x - controls.target.x, p.y - controls.target.y, 0);

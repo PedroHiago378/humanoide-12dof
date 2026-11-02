@@ -97,6 +97,7 @@ class SimMuJoCo:
         self.obs = self.env._obs()
         self.inicio = self.env.data.qpos[:2].copy()
         self.caiu = False
+        self.toque = None
         self.t = 0.0
         self.reinicios = getattr(self, "reinicios", 0) + 1   # o servidor ressincroniza as poses
 
@@ -120,6 +121,30 @@ class SimMuJoCo:
         e.forca_empurrao = e.massa_total * forca_rel * np.array([np.cos(ang), np.sin(ang), 0.0])
         e.fim_empurrao = e.data.time + 0.1
 
+    def empurrar_em(self, corpo, ponto, direcao, forca=1.5, duracao=0.1):
+        """Empurrao com o mouse: `forca` N na `direcao` (mundo), aplicada no `ponto` (mundo) do elo `corpo`.
+        O ponto fica preso ao elo enquanto dura (o robo pode girar no meio do empurrao)."""
+        e = self.env
+        bid = mujoco.mj_name2id(e.model, mujoco.mjtObj.mjOBJ_BODY, corpo)
+        if bid < 0:
+            bid = e.torso
+        R, p = e.data.xmat[bid].reshape(3, 3), e.data.xpos[bid]
+        d = np.asarray(direcao, float)
+        d = d / (np.linalg.norm(d) or 1.0)
+        self.toque = (bid, R.T @ (np.asarray(ponto, float) - p), np.clip(forca, 0, 20) * d, e.data.time + duracao)
+
+    def _aplicar_toque(self):
+        d = self.env.data
+        d.qfrc_applied[:] = 0.0   # o ambiente nao usa qfrc_applied: fica so para o empurrao do mouse
+        if self.toque is None:
+            return
+        bid, local, f, fim = self.toque
+        if d.time >= fim:
+            self.toque = None
+            return
+        ponto = d.xpos[bid] + d.xmat[bid].reshape(3, 3) @ local
+        mujoco.mj_applyFT(self.env.model, d, f, np.zeros(3), ponto, bid, d.qfrc_applied)
+
     def _escolher(self):
         """Politica de giro quando o comando e so girar; senao a de caminhada."""
         so_giro = abs(self.cmd[2]) > 0.05 and abs(self.cmd[0]) < 0.01 and abs(self.cmd[1]) < 0.005
@@ -133,6 +158,7 @@ class SimMuJoCo:
 
     def passo(self, q_alvo=None):
         """q_alvo (rad, ordem de JUNTAS): segue a pose em vez da politica e continua mesmo depois de cair."""
+        self._aplicar_toque()
         if q_alvo is not None:
             self.ativa = "poses"
             self._passo_poses(np.asarray(q_alvo, float))

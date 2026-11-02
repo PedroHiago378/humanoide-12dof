@@ -330,6 +330,9 @@ async def _tratar_rl(nucleo, ws, msg):
             nucleo.sim_mj.reiniciar()
         elif tipo == "sim_empurrar" and nucleo.sim_mj:
             nucleo.sim_mj.empurrar(float(msg.get("forca", 1.5)))
+        elif tipo == "sim_empurrar_ponto" and nucleo.sim_mj:   # clique no robo (modo empurrao)
+            nucleo.sim_mj.empurrar_em(str(msg["corpo"]), msg["ponto"], msg["direcao"], float(msg.get("forca", 1.5)),
+                                      float(np.clip(msg.get("duracao", 0.1), 0.02, 1.0)))
         elif tipo == "rl_iniciar":
             nome = await asyncio.to_thread(treino.iniciar, msg.get("nome"), msg.get("continuar"),
                                            msg.get("passos"), msg.get("envs"))
