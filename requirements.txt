@@ -4,3 +4,10 @@ pyserial
 # so para reconverter o STEP:
 # cadquery-ocp
 # trimesh
+
+# simulacao e RL (rl/):
+# mujoco
+# gymnasium
+# stable-baselines3[extra]
+# torch  (CPU: pip install torch --index-url https://download.pytorch.org/whl/cpu)
+# imageio imageio-ffmpeg  (videos)

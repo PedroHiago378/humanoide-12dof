@@ -94,6 +94,23 @@
   #kfT { width: 70px; }
   #curvaCanvas { flex: 1; width: 100%; min-height: 60px; display: block; background: #171a20; border-radius: 6px; }
   #curvaInfo { white-space: nowrap; }
+  .abas { display: flex; gap: 0; margin: 10px 0 2px; border-bottom: 1px solid var(--borda); }
+  .abas button { border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none;
+    color: var(--fraco); padding: 6px 10px; }
+  .abas button.ativo { color: var(--texto); border-bottom-color: var(--acento); background: none; }
+  .progresso { height: 6px; background: #262b34; border-radius: 3px; margin: 6px 0; overflow: hidden; }
+  .progresso i { display: block; height: 100%; width: 0; background: var(--acento); transition: width .5s; }
+  #rlGrafico { width: 100%; height: 90px; display: block; background: #171a20; border-radius: 6px; margin-top: 4px; }
+  .grade-recompensas { display: grid; grid-template-columns: 1fr 70px; gap: 3px 8px; align-items: center; margin: 4px 0; }
+  .grade-recompensas span { font-size: 12px; }
+  .grade-recompensas span.mudou { color: var(--aviso); }
+  #rlExecucoes { width: 100%; border-collapse: collapse; font-size: 11.5px; font-variant-numeric: tabular-nums; }
+  #rlExecucoes th { color: var(--fraco); font-weight: 500; text-align: left; padding: 2px 3px; }
+  #rlExecucoes td { padding: 3px; border-top: 1px solid var(--borda); cursor: pointer; }
+  #rlExecucoes tr.sel td { background: #24324a; }
+  #rlExecucoes td button { padding: 1px 6px; font-size: 11px; }
+  #rlLog { margin: 6px 0 0; max-height: 90px; overflow: auto; font-size: 10.5px; color: var(--fraco);
+    background: #161a20; border-radius: 4px; padding: 4px 6px; white-space: pre-wrap; }
   .eixo { border-top: 1px solid var(--borda); margin-top: 8px; padding-top: 6px; }
   .eixo .ganhos { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; margin: 4px 0; }
   .eixo .ganhos label { display: flex; flex-direction: column; font-size: 11px; color: var(--fraco); }
@@ -180,6 +197,11 @@
 <aside id="painel">
   <h1>Humanoide 12 DOF</h1>
   <div class="sub" id="resumo"></div>
+  <nav class="abas">
+    <button class="ativo" data-aba="abaControle">Controle</button>
+    <button data-aba="abaSim">Simulacao e treino</button>
+  </nav>
+  <div class="aba" id="abaControle">
 
   <h2>Conexao</h2>
   <div class="linha">
@@ -295,6 +317,83 @@
     <input type="text" id="poseNome" placeholder="nome da nova pose" style="flex:1">
     <button id="poseSalvar" title="Salva a pose atual dos sliders">salvar pose</button>
   </div>
+
+  </div><!-- abaControle -->
+
+  <div class="aba" id="abaSim" hidden>
+    <h2>Simulacao MuJoCo</h2>
+    <p class="dica">Robo livre no chao, com fisica e a politica de RL escolhida. Enquanto liga, os servos reais nao seguem.</p>
+    <div class="linha">
+      <label class="chk"><input type="checkbox" id="simLigar"> simular robo livre</label>
+      <label class="chk"><input type="checkbox" id="simSeguir" checked> camera segue</label>
+    </div>
+    <div class="linha" style="margin-top:6px">
+      <span class="sub">politica</span>
+      <select id="simPolitica" style="flex:1;min-width:0"></select>
+      <button id="simRecarregar" title="Recarrega a politica (pega o checkpoint mais novo de um treino em andamento)">&#8635;</button>
+    </div>
+    <div class="linha" style="margin-top:6px">
+      <span class="sub" title="Assume quando o comando e so girar (Q/E). Ex.: execucoes giro_*">giro</span>
+      <select id="simPoliticaGiro" style="flex:1;min-width:0"></select>
+    </div>
+    <div class="junta" style="grid-template-columns: 78px 1fr 60px">
+      <span class="nome" title="Frente (+) / tras (-)">frente</span><input type="range" id="simVx" min="-5" max="8" step="0.5" value="4"><span class="val" id="simVxV">4 cm/s</span>
+    </div>
+    <div class="junta" style="grid-template-columns: 78px 1fr 60px">
+      <span class="nome" title="Esquerda (+) / direita (-). So em politicas omni (v4 em diante)">lado</span><input type="range" id="simVy" min="-3" max="3" step="0.5" value="0"><span class="val" id="simVyV">0 cm/s</span>
+    </div>
+    <div class="junta" style="grid-template-columns: 78px 1fr 60px">
+      <span class="nome" title="Virar para a esquerda (+) / direita (-). So em politicas omni (v4 em diante)">giro</span><input type="range" id="simGiro" min="-40" max="40" step="2" value="0"><span class="val" id="simGiroV">0 °/s</span>
+    </div>
+    <p class="dica" id="simTeclas">Teclado (com a simulacao ligada): <b>W/S</b> frente/tras, <b>A/D</b> lado, <b>Q/E</b> virar.
+      Solte a tecla para parar aquele movimento.</p>
+    <div class="junta" style="grid-template-columns: 78px 1fr 52px">
+      <span class="nome" title="Escala da massa do robo (1 = como no CAD)">massa</span><input type="range" id="simMassa" min="0.6" max="1.6" step="0.05" value="1"><span class="val" id="simMassaV">1.00x</span>
+    </div>
+    <div class="linha">
+      <button id="simEmpurrar" title="Empurrao proporcional ao peso, direcao aleatoria">empurrar</button>
+      <button id="simReiniciar">reiniciar</button>
+      <label class="chk"><input type="checkbox" id="simEmpurroes"> empurroes automaticos</label>
+    </div>
+    <div class="info" id="simInfo" style="margin-top:6px"></div>
+
+    <h2>Treino (RL)</h2>
+    <div class="sub" id="rlStatus">sem treino rodando</div>
+    <div class="progresso"><i id="rlBarra"></i></div>
+    <div class="info" id="rlInfo"></div>
+    <canvas id="rlGrafico" title="azul: duracao do episodio (s) · laranja: velocidade (cm/s)"></canvas>
+    <div class="linha" style="margin-top:6px">
+      <input type="text" id="rlNome" placeholder="nome do treino (opcional)" style="flex:1">
+    </div>
+    <div class="linha" style="margin-top:6px">
+      <span class="sub">passos (M)</span><input type="number" id="rlPassos" min="0.1" step="1" style="width:64px">
+      <span class="sub">ambientes</span><input type="number" id="rlEnvs" min="1" max="32" step="1" style="width:52px">
+    </div>
+    <div class="linha" style="margin-top:6px">
+      <button id="rlIniciar">iniciar treino</button>
+      <button id="rlContinuar" title="Continua a execucao selecionada na tabela">continuar selecionado</button>
+      <button id="rlParar" title="Salva e encerra">parar</button>
+    </div>
+    <details class="cfg" id="rlRecompensasPainel">
+      <summary>Recompensas do proximo treino</summary>
+      <p class="dica">Positivo = premio, negativo = penalidade. As de equilibrio (postura, centro de massa, torque)
+        sao normalizadas e valem para qualquer peso do robo.</p>
+      <div id="rlRecompensas" class="grade-recompensas"></div>
+      <div class="linha"><button id="rlRestaurar">restaurar padrao</button></div>
+    </details>
+
+    <h2>Execucoes</h2>
+    <table id="rlExecucoes"></table>
+    <details class="cfg">
+      <summary>Python do treino</summary>
+      <p class="dica">O treino roda fora do programa, num Python com torch, stable-baselines3 e mujoco.</p>
+      <div class="linha">
+        <input type="text" id="rlPython" placeholder="detectar automaticamente" style="flex:1">
+        <button id="rlVerificar">verificar</button>
+      </div>
+    </details>
+    <pre id="rlLog"></pre>
+  </div><!-- abaSim -->
 
   <h2>Exibir</h2>
   <div class="linha">

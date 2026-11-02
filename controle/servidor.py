@@ -9,6 +9,8 @@ Abra http://127.0.0.1:8790 no navegador.
 import argparse
 import asyncio
 import json
+import logging
+import os
 import time
 
 import numpy as np
@@ -33,6 +35,14 @@ class Nucleo:
         self._q_hw, self._t_hw = None, 0.0   # ultimo quadro enviado aos servos
         self.controladores = {c.nome: c(robo) for c in CONTROLADORES}
         self.equilibrio = Equilibrio(robo)
+        self.sim_mj = None         # SimMuJoCo (aba Simulacao e treino), criado ao ligar
+        self.sim_mj_ativo = False
+        self.trava_rl = asyncio.Lock()
+        try:
+            from .rl_servico import ServicoTreino
+            self.treino = ServicoTreino()
+        except Exception as e:     # sem mujoco/gymnasium: aba de simulacao indisponivel
+            self.treino, self.erro_rl = None, str(e)
         self._coleta_imu = None    # lista de amostras durante o "nivelar"
         self.clientes = set()
         self.trocar("manual")
@@ -94,9 +104,21 @@ class Nucleo:
                 "log": self.hw.log[-8:]}
 
     async def laco_status(self):
-        """Telemetria por consulta: o heartbeat da ESP32 so sai pela USB, nao pelo Bluetooth."""
+        """Telemetria por consulta: o heartbeat da ESP32 so sai pela USB, nao pelo Bluetooth.
+        Tambem manda o progresso do treino de RL."""
         while True:
             await asyncio.sleep(1.0)
+            if self.treino and self.clientes:
+                try:
+                    st = await asyncio.to_thread(self.treino.estado)
+                    await self.difundir({"tipo": "rl_estado", **st})
+                    # lista de execucoes: quando um treino comeca/termina e a cada 15 s
+                    self._tick_rl = getattr(self, "_tick_rl", 0) + 1
+                    if st["rodando"] != getattr(self, "_rodava", None) or self._tick_rl % 15 == 0:
+                        self._rodava = st["rodando"]
+                        await self.difundir({"tipo": "rl_lista", "execucoes": await asyncio.to_thread(self.treino.listar)})
+                except Exception:
+                    pass
             hw = self.hw
             if hw:
                 try:
@@ -128,6 +150,24 @@ class Nucleo:
                 self.equilibrio.amostra(t_ms, acel, giro)
                 if self._coleta_imu is not None:
                     self._coleta_imu.append((t_ms, acel, giro))
+            if self.sim_mj_ativo:
+                # simulacao MuJoCo: o robo livre (politica de RL) substitui o controlador e os servos
+                try:
+                    self.sim_mj.passo()
+                    mj = self.sim_mj.estado()
+                except Exception as e:   # erro na simulacao nao pode parar o laco
+                    logging.getLogger("humanoide").exception("simulacao MuJoCo")
+                    self.sim_mj_ativo = False
+                    await self.difundir({"tipo": "aviso", "texto": f"simulacao MuJoCo: {e}"})
+                    continue
+                await self.difundir({"tipo": "estado", "t": mj["info"]["t"], "controlador": "MuJoCo",
+                                     "fonte": "MuJoCo", "q": mj["q"], "base": mj["base"], "mujoco": mj["info"],
+                                     "hw": self.hw_estado(), "eq": None, "anim": None})
+                proximo += periodo
+                await asyncio.sleep(max(0.0, proximo - time.perf_counter()))
+                if time.perf_counter() - proximo > 0.5:
+                    proximo = time.perf_counter()
+                continue
             q_ref = self.avancar(periodo, self.equilibrio.correcao(periodo))
             if hw and self.hw_seguir and hw.modo == "run":
                 # servo de hobby so aceita posicao: controlador de torque manda o estado simulado
@@ -216,6 +256,75 @@ async def tratar_equilibrio(nucleo, ws, msg):
         await ws.send_json({"tipo": "aviso", "texto": f"equilibrio: {e}"})
 
 
+async def tratar_rl(nucleo, ws, msg):
+    """Aba Simulacao e treino: sim_* (MuJoCo no programa) e rl_* (treino em processo externo).
+    Uma mensagem por vez, na ordem em que chegaram (ligar, configurar e carregar dependem uma da outra)."""
+    async with nucleo.trava_rl:
+        await _tratar_rl(nucleo, ws, msg)
+
+
+async def _tratar_rl(nucleo, ws, msg):
+    tipo = msg["tipo"]
+    treino = nucleo.treino
+    try:
+        if treino is None:
+            raise RuntimeError(f"simulacao indisponivel: {getattr(nucleo, 'erro_rl', '')}")
+        if tipo == "sim_ligar":
+            if msg["ligado"] and nucleo.sim_mj is None:
+                from .sim_mujoco import SimMuJoCo
+                nucleo.sim_mj = await asyncio.to_thread(SimMuJoCo)
+            if msg["ligado"]:
+                nucleo.hw_seguir = False    # o robo real nao segue a simulacao
+            nucleo.sim_mj_ativo = bool(msg["ligado"])
+        elif tipo == "sim_politica":
+            caminho = treino.politica(msg["nome"]) if msg.get("nome") else None
+            if caminho and not os.path.exists(caminho):
+                caminho = await asyncio.to_thread(treino.exportar, msg["nome"])
+            if nucleo.sim_mj is None:
+                from .sim_mujoco import SimMuJoCo
+                nucleo.sim_mj = await asyncio.to_thread(SimMuJoCo)
+            await asyncio.to_thread(nucleo.sim_mj.carregar, caminho)
+        elif tipo == "sim_politica_giro":
+            caminho = treino.politica(msg["nome"]) if msg.get("nome") else None
+            if caminho and not os.path.exists(caminho):
+                caminho = await asyncio.to_thread(treino.exportar, msg["nome"])
+            if nucleo.sim_mj is None:
+                from .sim_mujoco import SimMuJoCo
+                nucleo.sim_mj = await asyncio.to_thread(SimMuJoCo)
+            await asyncio.to_thread(nucleo.sim_mj.carregar_giro, caminho)
+        elif tipo == "sim_config" and nucleo.sim_mj:
+            await asyncio.to_thread(nucleo.sim_mj.configurar, msg.get("vx"), msg.get("massa"), msg.get("empurroes"),
+                                    msg.get("vy"), msg.get("giro"))
+        elif tipo == "sim_reiniciar" and nucleo.sim_mj:
+            nucleo.sim_mj.reiniciar()
+        elif tipo == "sim_empurrar" and nucleo.sim_mj:
+            nucleo.sim_mj.empurrar(float(msg.get("forca", 1.5)))
+        elif tipo == "rl_iniciar":
+            nome = await asyncio.to_thread(treino.iniciar, msg.get("nome"), msg.get("continuar"),
+                                           msg.get("passos"), msg.get("envs"))
+            await ws.send_json({"tipo": "aviso", "texto": f"Treino {nome} iniciado."})
+        elif tipo == "rl_parar":
+            treino.parar()
+            await ws.send_json({"tipo": "aviso", "texto": "Parando: o treino salva e encerra em alguns segundos."})
+        elif tipo == "rl_config":
+            treino.salvar_config(msg["config"])
+        elif tipo == "rl_restaurar":
+            treino.restaurar_recompensas()
+        elif tipo == "rl_python":
+            treino.salvar_config({"python": msg.get("python", "")})
+            ok = await asyncio.to_thread(treino.verificar_python)
+            await ws.send_json({"tipo": "aviso", "texto": f"Python para treino: {ok}" if ok else
+                                "Nenhum Python com torch + stable-baselines3 + mujoco encontrado."})
+        elif tipo == "rl_exportar":
+            await asyncio.to_thread(treino.exportar, msg["nome"])
+        if tipo.startswith("rl_") or tipo in ("sim_politica", "sim_politica_giro"):
+            await ws.send_json({"tipo": "rl_config", "config": treino.config, "padrao": treino.padrao})
+            await nucleo.difundir({"tipo": "rl_lista", "execucoes": await asyncio.to_thread(treino.listar)})
+    except Exception as e:
+        logging.getLogger("humanoide").exception(tipo)
+        await ws.send_json({"tipo": "aviso", "texto": f"{tipo}: {e}"})
+
+
 OPERACOES_BIBLIOTECA = ("biblioteca", "salvar_pose", "apagar_pose", "salvar_anim", "apagar_anim")
 
 
@@ -243,6 +352,9 @@ def criar_app(nucleo, porta_serial=None):
         if nucleo.hw:
             await ws.send_json({"tipo": "hw_config", "config": nucleo.hw.config})
         await ws.send_json({"tipo": "eq_config", "config": nucleo.equilibrio.cfg})
+        if nucleo.treino:
+            await ws.send_json({"tipo": "rl_config", "config": nucleo.treino.config, "padrao": nucleo.treino.padrao})
+            await ws.send_json({"tipo": "rl_lista", "execucoes": await asyncio.to_thread(nucleo.treino.listar)})
         async for m in ws:
             if m.type != WSMsgType.TEXT:
                 continue
@@ -252,6 +364,8 @@ def criar_app(nucleo, porta_serial=None):
             elif msg["tipo"] == "controlador":
                 nucleo.trocar(msg["nome"])
                 await nucleo.difundir(nucleo.info())
+            elif msg["tipo"].startswith(("sim_", "rl_")):
+                asyncio.create_task(tratar_rl(nucleo, ws, msg))
             elif msg["tipo"].startswith("eq_"):
                 asyncio.create_task(tratar_equilibrio(nucleo, ws, msg))
             elif msg["tipo"] in OPERACOES_BIBLIOTECA:
@@ -273,6 +387,9 @@ def criar_app(nucleo, porta_serial=None):
             await nucleo.hw_conectar(porta_serial)
         app["laco"] = asyncio.create_task(nucleo.laco())
         app["status"] = asyncio.create_task(nucleo.laco_status())
+        for tarefa in (app["laco"], app["status"]):   # se um laco morrer, o motivo vai para o log
+            tarefa.add_done_callback(lambda t: t.cancelled() or not t.exception() or logging.getLogger(
+                "humanoide").error("laco parou", exc_info=t.exception()))
 
     async def parar(app):
         app["laco"].cancel()
@@ -285,6 +402,10 @@ def criar_app(nucleo, porta_serial=None):
     app.router.add_get("/visualizador/", lambda r: web.HTTPFound("/visualizador/index.html"))
     for pasta in ("visualizador", "modelo", "config"):
         app.router.add_static(f"/{pasta}", f"{RAIZ}/{pasta}")
+    if nucleo.treino:   # videos das execucoes de treino (botao "video" da aba de treino)
+        from .rl_servico import EXECUCOES
+        os.makedirs(EXECUCOES, exist_ok=True)
+        app.router.add_static("/execucoes", EXECUCOES)
     app.on_startup.append(iniciar)
     app.on_cleanup.append(parar)
     return app

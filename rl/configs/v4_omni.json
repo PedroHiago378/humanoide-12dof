@@ -1,0 +1,21 @@
+{
+  "_comentario": "v4: andar em qualquer direcao e virar para os dois lados. Inicia com os pesos do v3 (--iniciar-de).",
+  "escala_acao": 0.35,
+  "filtro_acao": 0.5,
+  "comando": {"omni": true, "vx": [-0.03, 0.05], "vy": [-0.02, 0.02], "giro": [-0.6, 0.6],
+              "prob_zero": 0.35, "prob_parado": 0.05, "trocar": [3.0, 6.0]},
+  "passada": {"periodo": 0.8, "altura_pe": 0.010},
+  "recompensas": {
+    "velocidade": 1.5,
+    "giro": 1.0,
+    "lateral": 0.0,
+    "centro_massa": 0.4,
+    "fase": 0.8,
+    "altura_pe": 0.8,
+    "suavidade": -0.15,
+    "tremor": -0.15,
+    "vel_juntas": -0.1,
+    "acel_juntas": -0.1,
+    "torque": -0.08
+  }
+}

@@ -6,6 +6,7 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { iniciarAnimacao } from "./animacao.js";
 import { iniciarEquilibrio } from "./equilibrio.js";
+import { iniciarTreino } from "./treino.js";
 
 THREE.Object3D.DEFAULT_UP.set(0, 0, 1); // frame ROS: Z para cima
 
@@ -34,12 +35,12 @@ sol.position.set(0.6, 0.4, 1.2);
 sol.castShadow = true;
 sol.shadow.mapSize.set(2048, 2048);
 Object.assign(sol.shadow.camera, { left: -0.4, right: 0.4, top: 0.4, bottom: -0.4, near: 0.1, far: 3 });
-scene.add(sol);
+scene.add(sol, sol.target);
 
-const chao = new THREE.Mesh(new THREE.PlaneGeometry(3, 3), new THREE.ShadowMaterial({ opacity: 0.35 }));
+const chao = new THREE.Mesh(new THREE.PlaneGeometry(12, 12), new THREE.ShadowMaterial({ opacity: 0.35 }));
 chao.receiveShadow = true;
 scene.add(chao);
-const grade = new THREE.GridHelper(1, 20, 0x3a4250, 0x262b34);
+const grade = new THREE.GridHelper(6, 120, 0x3a4250, 0x262b34);
 grade.rotation.x = Math.PI / 2;
 scene.add(grade);
 scene.add(new THREE.AxesHelper(0.08));
@@ -222,6 +223,7 @@ for (const [n, u] of Object.entries(ui)) {
 $("ltRecolher").onclick = () => document.body.classList.toggle("lt-fechada");
 if (window.innerWidth < 760) document.body.classList.add("lt-fechada");   // tela estreita: comeca recolhida
 const equilibrio = iniciarEquilibrio({ nomes: NOMES, enviar: (m) => enviar(m), online: () => ws?.readyState === 1, aviso });
+const treino = iniciarTreino({ enviar: (m) => enviar(m), online: () => ws?.readyState === 1, aviso });
 
 $("vEixos").onchange = (e) => scene.traverse((o) => { if (o.userData.eixoJunta) o.visible = e.target.checked; });
 $("vCom").onchange = (e) => { grupoCom.visible = e.target.checked; };
@@ -276,6 +278,8 @@ function conectar() {
         Object.assign(ui[n].input, { min: lo, max: hi });
         ui[n].input.title = `limite ${lo} a ${hi} graus`;
       }
+    } else if (msg.tipo.startsWith("rl_")) {
+      treino.mensagem(msg);
     } else if (msg.tipo === "eq_config") {
       equilibrio.config(msg.config);
     } else if (msg.tipo === "biblioteca") {
@@ -289,6 +293,7 @@ function conectar() {
       editor.pararLocal();
       editor.estado(msg.anim, msg.controlador);
       equilibrio.estado(msg.eq);
+      treino.estado(msg.mujoco);
       // inclina o modelo como o robo real (IMU) ou o teste simulado
       if (!msg.base) {
         const eq = msg.eq;
@@ -300,6 +305,10 @@ function conectar() {
       if (msg.base) {
         base.position.fromArray(msg.base.p);
         base.quaternion.set(...msg.base.quat); // x, y, z, w
+        if (treino.seguirCamera()) seguir(base.position);
+      } else if (base.position.x || base.position.y) {
+        base.position.x = base.position.y = 0;   // saiu da simulacao MuJoCo: volta para a origem
+        seguir(base.position);
       }
       aplicarJuntas();
       for (const [n, tau] of Object.entries(msg.tau ?? {})) {
@@ -501,6 +510,15 @@ $("cfgTestar").onclick = async () => {
 };
 hwHabilitar();
 conectar();
+
+// camera (e sombra) acompanham o robo que anda livre na simulacao MuJoCo
+function seguir(p) {
+  const delta = new THREE.Vector3(p.x - controls.target.x, p.y - controls.target.y, 0);
+  controls.target.add(delta);
+  camera.position.add(delta);
+  sol.position.add(delta);
+  sol.target.position.set(controls.target.x, controls.target.y, 0);
+}
 
 // ---------------------------------------------------------------- loop
 redimensionar();

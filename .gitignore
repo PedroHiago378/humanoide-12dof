@@ -11,3 +11,8 @@ config/biblioteca.json
 config/equilibrio.json
 config/esp32_simulada_nvs.json
 *.log
+
+# treinos de RL (modelos, checkpoints, TensorBoard)
+rl/execucoes/
+rl/ativo.json
+config/rl_config.json

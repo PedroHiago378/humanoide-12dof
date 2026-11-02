@@ -1,0 +1,123 @@
+<mujoco model="humanoide_12dof">
+  <!-- gerado por rl/gerar_mjcf.py a partir de modelo/robo.json; nao edite a mao -->
+  <compiler angle="degree" meshdir="." balanceinertia="true"/>
+  <option timestep="0.002" integrator="implicitfast"/>
+  <visual><global offwidth="1280" offheight="720"/></visual>
+  <default>
+    <joint damping="0.01" armature="0.001" frictionloss="0.01"/>
+    <geom contype="0" conaffinity="0"/>
+    <default class="visual"><geom type="mesh" group="1" rgba="0.82 0.84 0.87 1" density="0"/></default>
+    <default class="colisao"><geom type="mesh" group="3" contype="1" conaffinity="0" density="0" rgba="0.5 0.6 0.9 0.3"/></default>
+    <default class="pe"><geom contype="1" conaffinity="0" density="0" friction="0.9 0.02 0.002" group="3" rgba="0.9 0.5 0.2 0.4"/></default>
+  </default>
+  <asset>
+    <texture name="grade" type="2d" builtin="checker" rgb1="0.16 0.18 0.22" rgb2="0.12 0.13 0.16" width="512" height="512"/>
+    <material name="chao" texture="grade" texrepeat="40 40" reflectance="0.05"/>
+    <mesh name="torso_col" file="colisao/torso.stl"/>
+    <mesh name="antebraco_L_col" file="colisao/antebraco_L.stl"/>
+    <mesh name="antebraco_R_col" file="colisao/antebraco_R.stl"/>
+    <mesh name="braco_L_col" file="colisao/braco_L.stl"/>
+    <mesh name="braco_R_col" file="colisao/braco_R.stl"/>
+    <mesh name="canela_L_col" file="colisao/canela_L.stl"/>
+    <mesh name="canela_R_col" file="colisao/canela_R.stl"/>
+    <mesh name="coxa_L_col" file="colisao/coxa_L.stl"/>
+    <mesh name="coxa_R_col" file="colisao/coxa_R.stl"/>
+    <mesh name="pe_L_col" file="colisao/pe_L.stl"/>
+    <mesh name="pe_R_col" file="colisao/pe_R.stl"/>
+    <mesh name="quadril_L_col" file="colisao/quadril_L.stl"/>
+    <mesh name="quadril_R_col" file="colisao/quadril_R.stl"/>
+  </asset>
+  <worldbody>
+    <light pos="0.5 0.3 1.5" dir="-0.3 -0.2 -1" diffuse="0.8 0.8 0.8"/>
+    <geom name="chao" type="plane" size="20 20 0.1" material="chao" contype="0" conaffinity="1" friction="0.9 0.02 0.002"/>
+    <body name="torso" pos="0 0 0.134">
+      <freejoint name="base"/>
+      <site name="imu" pos="0 0 0.06" size="0.004" group="4"/>
+      <inertial pos="-0.01809 0.00027 0.06021" mass="0.23706" fullinertia="0.00026176 0.00027888 0.00017577 -8.658e-07 -1.9638e-05 -1.5759e-06"/>
+      <geom name="torso" class="colisao" mesh="torso_col"/>
+      <body name="quadril_L" pos="0 0.025 0">
+        <joint name="quadril_roll_L" axis="1 0 0" range="-90 90"/>
+        <inertial pos="-0.00792 0.00534 -0.00915" mass="0.03647" fullinertia="5.3739e-06 5.7445e-06 5.3355e-06 5.6e-09 -3.346e-07 5e-10"/>
+        <geom name="quadril_L" class="colisao" mesh="quadril_L_col"/>
+        <body name="coxa_L" pos="-0.0034 0.0118 -0.0163">
+          <joint name="quadril_pitch_L" axis="0 1 0" range="-90 90"/>
+          <inertial pos="-5e-05 -0.00563 -0.02604" mass="0.01469" fullinertia="7.6347e-06 4.986e-06 3.49e-06 0 0 -5.6e-09"/>
+          <geom name="coxa_L" class="colisao" mesh="coxa_L_col"/>
+          <body name="canela_L" pos="0 -0.0293 -0.0486">
+            <joint name="joelho_L" axis="0 1 0" range="0 110"/>
+            <inertial pos="-5e-05 0.02293 -0.03475" mass="0.02815" fullinertia="1.0923e-05 7.5734e-06 4.5379e-06 -0 -0 -3.05e-08"/>
+            <geom name="canela_L" class="colisao" mesh="canela_L_col"/>
+            <body name="pe_L" pos="-0.0001 0.0164 -0.0486">
+              <joint name="tornozelo_L" axis="0 1 0" range="-90 90"/>
+              <inertial pos="0.00381 0.00631 -0.01322" mass="0.01376" fullinertia="4.224e-06 2.847e-06 6.1305e-06 -1.75e-08 1.221e-07 7.91e-08"/>
+              <geom name="pe_L" class="pe" type="box" pos="0.00405 0.00665 -0.0068" size="0.025 0.02585 0.012"/>
+              <site name="pe_L" pos="0.00405 0.00665 -0.0068" size="0.026 0.02685 0.013" type="box" group="4" rgba="0 0 0 0"/>
+            </body>
+          </body>
+        </body>
+      </body>
+      <body name="quadril_R" pos="0 -0.025 0">
+        <joint name="quadril_roll_R" axis="1 0 0" range="-90 90"/>
+        <inertial pos="-0.00792 -0.00534 -0.00915" mass="0.03647" fullinertia="5.3739e-06 5.7445e-06 5.3355e-06 -5.6e-09 -3.346e-07 -5e-10"/>
+        <geom name="quadril_R" class="colisao" mesh="quadril_R_col"/>
+        <body name="coxa_R" pos="-0.0034 -0.0118 -0.0163">
+          <joint name="quadril_pitch_R" axis="0 1 0" range="-90 90"/>
+          <inertial pos="-5e-05 0.00563 -0.02604" mass="0.01469" fullinertia="7.6347e-06 4.986e-06 3.49e-06 -0 0 5.6e-09"/>
+          <geom name="coxa_R" class="colisao" mesh="coxa_R_col"/>
+          <body name="canela_R" pos="-0.0001 0.0293 -0.0486">
+            <joint name="joelho_R" axis="0 1 0" range="0 110"/>
+            <inertial pos="5e-05 -0.0234 -0.03475" mass="0.02815" fullinertia="1.0928e-05 7.5734e-06 4.5428e-06 -0 -0 -2.435e-07"/>
+            <geom name="canela_R" class="colisao" mesh="canela_R_col"/>
+            <body name="pe_R" pos="0 -0.0303 -0.0486">
+              <joint name="tornozelo_R" axis="0 1 0" range="-90 90"/>
+              <inertial pos="0.00381 0.00631 -0.01322" mass="0.01376" fullinertia="4.224e-06 2.847e-06 6.1305e-06 -1.75e-08 1.221e-07 7.91e-08"/>
+              <geom name="pe_R" class="pe" type="box" pos="0.00405 0.00665 -0.0068" size="0.025 0.02585 0.012"/>
+              <site name="pe_R" pos="0.00405 0.00665 -0.0068" size="0.026 0.02685 0.013" type="box" group="4" rgba="0 0 0 0"/>
+            </body>
+          </body>
+        </body>
+      </body>
+      <body name="braco_L" pos="-0.0055 0.025 0.0766">
+        <joint name="ombro_L" axis="0 1 0" range="-90 90"/>
+        <inertial pos="-5e-05 0.03495 -5e-05" mass="0.02715" fullinertia="6.0057e-06 2.8934e-06 7.2874e-06 -1.157e-07 -3e-10 -1.22e-08"/>
+        <geom name="braco_L" class="colisao" mesh="braco_L_col"/>
+        <body name="antebraco_L" pos="0.0067 0.0472 0">
+          <joint name="cotovelo_L" axis="1 0 0" range="-90 90"/>
+          <inertial pos="-0.00668 0.02866 -3e-05" mass="0.01676" fullinertia="5.9565e-06 3.5088e-06 9.0447e-06 1.676e-07 -0 0"/>
+          <geom name="antebraco_L" class="colisao" mesh="antebraco_L_col"/>
+        </body>
+      </body>
+      <body name="braco_R" pos="-0.0055 -0.025 0.0766">
+        <joint name="ombro_R" axis="0 1 0" range="-90 90"/>
+        <inertial pos="-6e-05 -0.03516 -3e-05" mass="0.0269" fullinertia="5.8859e-06 2.8766e-06 7.1831e-06 -1.129e-07 -0 -0"/>
+        <geom name="braco_R" class="colisao" mesh="braco_R_col"/>
+        <body name="antebraco_R" pos="-0.0068 -0.0472 0">
+          <joint name="cotovelo_R" axis="1 0 0" range="-90 90"/>
+          <inertial pos="0.00581 -0.02869 -3e-05" mass="0.01676" fullinertia="5.9565e-06 3.5133e-06 9.0492e-06 -4.82e-08 0 0"/>
+          <geom name="antebraco_R" class="colisao" mesh="antebraco_R_col"/>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+  <actuator>
+    <position name="quadril_roll_L" joint="quadril_roll_L" kp="2.4" kv="0.05" forcerange="-0.21 0.21" ctrlrange="-1.5708 1.5708"/>
+    <position name="quadril_pitch_L" joint="quadril_pitch_L" kp="2.4" kv="0.05" forcerange="-0.21 0.21" ctrlrange="-1.5708 1.5708"/>
+    <position name="joelho_L" joint="joelho_L" kp="2.4" kv="0.05" forcerange="-0.21 0.21" ctrlrange="0 1.91986"/>
+    <position name="tornozelo_L" joint="tornozelo_L" kp="2.4" kv="0.05" forcerange="-0.21 0.21" ctrlrange="-1.5708 1.5708"/>
+    <position name="quadril_roll_R" joint="quadril_roll_R" kp="2.4" kv="0.05" forcerange="-0.21 0.21" ctrlrange="-1.5708 1.5708"/>
+    <position name="quadril_pitch_R" joint="quadril_pitch_R" kp="2.4" kv="0.05" forcerange="-0.21 0.21" ctrlrange="-1.5708 1.5708"/>
+    <position name="joelho_R" joint="joelho_R" kp="2.4" kv="0.05" forcerange="-0.21 0.21" ctrlrange="0 1.91986"/>
+    <position name="tornozelo_R" joint="tornozelo_R" kp="2.4" kv="0.05" forcerange="-0.21 0.21" ctrlrange="-1.5708 1.5708"/>
+    <position name="ombro_L" joint="ombro_L" kp="2.4" kv="0.05" forcerange="-0.21 0.21" ctrlrange="-1.5708 1.5708"/>
+    <position name="cotovelo_L" joint="cotovelo_L" kp="2.4" kv="0.05" forcerange="-0.21 0.21" ctrlrange="-1.5708 1.5708"/>
+    <position name="ombro_R" joint="ombro_R" kp="2.4" kv="0.05" forcerange="-0.21 0.21" ctrlrange="-1.5708 1.5708"/>
+    <position name="cotovelo_R" joint="cotovelo_R" kp="2.4" kv="0.05" forcerange="-0.21 0.21" ctrlrange="-1.5708 1.5708"/>
+  </actuator>
+  <sensor>
+    <gyro name="giro" site="imu"/>
+    <accelerometer name="acel" site="imu"/>
+    <framequat name="orientacao" objtype="site" objname="imu"/>
+    <touch name="toque_pe_L" site="pe_L"/>
+    <touch name="toque_pe_R" site="pe_R"/>
+  </sensor>
+</mujoco>

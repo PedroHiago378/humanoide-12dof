@@ -14,6 +14,13 @@ dados = [
     ("modelo/robo.json", "modelo"),
     ("modelo/robo.glb", "modelo"),
     ("config/poses.json", "config"),
+    # simulacao MuJoCo e treino (aba Simulacao e treino); o treino em si roda no Python do PC
+    ("rl/ambiente.py", "rl"),
+    ("rl/treinar.py", "rl"),
+    ("rl/exportar.py", "rl"),
+    ("rl/avaliar.py", "rl"),
+    ("modelo/mujoco/robo_treino.xml", "modelo/mujoco"),
+    ("modelo/mujoco/colisao", "modelo/mujoco/colisao"),
 ]
 
 cmd = [
@@ -23,8 +30,16 @@ cmd = [
     "--workpath", os.path.join(RAIZ, "build"),
     "--specpath", os.path.join(RAIZ, "build"),
     "--hidden-import", "serial.tools.list_ports",
+    # importados so quando a aba de simulacao e usada (rl/ambiente.py e carregado do disco)
+    "--hidden-import", "controle.sim_mujoco", "--hidden-import", "controle.rl_servico",
+    "--hidden-import", "controle.politica_rl", "--hidden-import", "gymnasium", "--hidden-import", "gymnasium.spaces",
+    "--collect-all", "mujoco",
     "--exclude-module", "tkinter", "--exclude-module", "matplotlib", "--exclude-module", "scipy",
     "--exclude-module", "OCP", "--exclude-module", "cadquery", "--exclude-module", "trimesh",
+    "--exclude-module", "torch", "--exclude-module", "stable_baselines3", "--exclude-module", "tensorboard",
+    "--exclude-module", "pandas", "--exclude-module", "cv2", "--exclude-module", "imageio",
+    "--exclude-module", "imageio_ffmpeg", "--exclude-module", "pygame", "--exclude-module", "PIL",
+    "--exclude-module", "lxml", "--exclude-module", "pygments", "--exclude-module", "IPython",
 ]
 if os.path.exists(os.path.join(RAIZ, "ferramentas", "icone.ico")):
     cmd += ["--icon", os.path.join(RAIZ, "ferramentas", "icone.ico")]

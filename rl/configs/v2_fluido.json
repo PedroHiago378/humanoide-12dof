@@ -1,0 +1,15 @@
+{
+  "_comentario": "v2: movimento fluido e devagar. Passe com --config rl/configs/v2_fluido.json",
+  "escala_acao": 0.35,
+  "filtro_acao": 0.5,
+  "comando": {"vx_max": 0.05, "prob_parado": 0.15},
+  "passada": {"periodo": 0.8, "altura_pe": 0.010},
+  "recompensas": {
+    "velocidade": 1.0,
+    "suavidade": -0.5,
+    "tremor": -0.5,
+    "vel_juntas": -0.3,
+    "acel_juntas": -0.3,
+    "torque": -0.15
+  }
+}

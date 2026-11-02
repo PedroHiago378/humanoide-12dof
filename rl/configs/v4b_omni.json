@@ -1,0 +1,23 @@
+{
+  "_comentario": "v4b: continua do v4 (que so parava quando pedia virar/lado). Premio por progresso parcial na direcao, pedidos menores e atrito mais baixo para o pe poder girar (o robo nao tem junta de yaw no quadril).",
+  "escala_acao": 0.35,
+  "filtro_acao": 0.5,
+  "comando": {"omni": true, "vx": [-0.02, 0.04], "vy": [-0.015, 0.015], "giro": [-0.4, 0.4],
+              "prob_zero": 0.35, "prob_parado": 0.05, "trocar": [3.0, 6.0]},
+  "passada": {"periodo": 0.8, "altura_pe": 0.010},
+  "randomizar": {"atrito": [0.35, 1.0]},
+  "recompensas": {
+    "velocidade": 1.5,
+    "giro": 1.5,
+    "direcao": 1.0,
+    "lateral": 0.0,
+    "centro_massa": 0.4,
+    "fase": 0.8,
+    "altura_pe": 0.8,
+    "suavidade": -0.15,
+    "tremor": -0.15,
+    "vel_juntas": -0.1,
+    "acel_juntas": -0.1,
+    "torque": -0.08
+  }
+}

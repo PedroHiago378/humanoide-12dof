@@ -53,6 +53,37 @@ Em RUN a ESP32 recusa `POS` fora de [min, max] (`ERR:LIMIT:min:max`) e satura `J
 (canal aparece em `clamped` no STATUS). Ao conectar, os limites gravados viram os limites das juntas no simulador e
 nos sliders. Os comandos estão no cabeçalho de `firmware/esp32_humanoide/src/main.cpp`.
 
+## Simulação no MuJoCo e caminhada por RL (`rl/`)
+
+```
+pip install mujoco gymnasium "stable-baselines3[extra]" imageio imageio-ffmpeg
+pip install torch --index-url https://download.pytorch.org/whl/cpu
+python rl/gerar_mjcf.py                       # robo.json -> modelo/mujoco/robo.xml (rode de novo se o CAD mudar)
+python rl/treinar.py                          # PPO, 20 M passos, ~2 h com 10 ambientes
+tensorboard --logdir rl/execucoes             # curvas de cada recompensa
+python rl/avaliar.py rl/execucoes/<nome>/modelo_final.zip            # janela 3D
+python rl/avaliar.py <modelo.zip> --massa 1.3 --vx 0.08 --video andar.mp4
+```
+
+**No programa** (aba **Simulacao e treino**): liga o robô livre no MuJoCo com a política escolhida (velocidade,
+massa, empurrões), inicia/para/continua treinos com barra de progresso, gráfico e pesos das recompensas editáveis.
+O MuJoCo vai dentro do executável e a política roda em numpy (`politica.npz`, exportada pelo treino); o treino em si
+usa o Python do PC (com torch e stable-baselines3), detectado automaticamente. No executável as execuções ficam em
+`%LOCALAPPDATA%\Humanoide\rl\execucoes`.
+
+- **Modelo** (`rl/gerar_mjcf.py`): base livre, massas/inércias do CAD, servos como atuadores de posição
+  com o torque do MG90S (0,21 N·m), inércia do motor, atrito, IMU no torso e toque nos pés; joelhos só dobram para trás.
+- **Ambiente** (`rl/ambiente.py`): a política só vê o que o robô real tem (gravidade e giroscópio da IMU, ângulos e
+  velocidades das juntas, ação anterior, comando de velocidade e fase da passada) e manda alvos aos servos a 50 Hz,
+  como a ESP32.
+- **Equilíbrio independente do peso**: a cada episódio muda a massa (0,75–1,35×, por elo ±10 %, até 120 g de carga
+  no torso com o centro de massa deslocado), a força dos servos (±20 %) e o atrito; a política não sabe a massa.
+  As recompensas usam grandezas normalizadas (torque ÷ torque máximo, centro de massa sobre o pé em unidades do
+  tamanho do pé, inclinação do torso) e os empurrões têm força proporcional ao peso.
+- **Recompensas** (pesos em `PADRAO["recompensas"]`, ou `--config arquivo.json`): velocidade para frente, sem
+  andar de lado/girar, torso reto, altura do torso, centro de massa sobre os pés, contato dos pés na fase da
+  passada, pé de balanço levantado, vivo; penalidades de torque, tremedeira, juntas no limite, pé escorregando e queda.
+
 ## Convenções
 
 - Frame: X frente, Y esquerda do robô, Z para cima; metros, kg, radianos (graus só na UI/poses).
