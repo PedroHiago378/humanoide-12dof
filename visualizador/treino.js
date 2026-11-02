@@ -21,7 +21,9 @@ export function iniciarTreino({ enviar, online, aviso }) {
 
   // ------------------------------------------------------------------ simulacao
   const exigeServidor = () => (online() ? true : (aviso("Precisa do servidor (abra pelo programa)."), false));
+  let ultimaTroca = 0;
   $("simLigar").onchange = (e) => {
+    ultimaTroca = performance.now();
     if (!exigeServidor()) { e.target.checked = false; return; }
     enviar({ tipo: "sim_ligar", ligado: e.target.checked });
     if (e.target.checked) {
@@ -36,11 +38,13 @@ export function iniciarTreino({ enviar, online, aviso }) {
     if ($("simModo").value === "poses") aviso("Use os sliders, poses e animacoes da aba Controle (com \"comandar\" marcado).");
   };
   $("simPolitica").onchange = () => {
+    ultimaTroca = performance.now();
     if (!exigeServidor()) return;
     if ($("simPolitica").value) aviso("Carregando politica...");
     enviar({ tipo: "sim_politica", nome: $("simPolitica").value || null });
   };
   $("simPoliticaGiro").onchange = () => {
+    ultimaTroca = performance.now();
     if (!exigeServidor()) return;
     enviar({ tipo: "sim_politica_giro", nome: $("simPoliticaGiro").value || null });
   };
@@ -86,13 +90,29 @@ export function iniciarTreino({ enviar, online, aviso }) {
   $("simEmpurrar").onclick = () => enviar({ tipo: "sim_empurrar", forca: 2.0 });
   $("simReiniciar").onclick = () => enviar({ tipo: "sim_reiniciar" });
 
+  // a ultima politica escolhida fica salva no navegador e volta selecionada ao abrir o programa
+  const lembrar = (id, v) => { try { localStorage.setItem(id, v ?? ""); } catch {} };
+  const lembrada = (id) => { try { return localStorage.getItem(id) ?? ""; } catch { return ""; } };
+  for (const id of ["simPolitica", "simPoliticaGiro", "simModo"]) $(id).addEventListener("change", () => lembrar(id, $(id).value));
+  if (lembrada("simModo")) $("simModo").value = lembrada("simModo");
+
   function desenharPoliticas() {
     const opcoes = execucoes.filter((e) => e.modelo || e.politica);
     const itens = opcoes.map((e) => `<option value="${e.nome}">${e.nome}${e.politica ? "" : " (exportar)"}${e.estado === "treinando" ? " · treinando" : ""}</option>`).join("");
     for (const [id, vazio] of [["simPolitica", "(sem politica: pose padrao)"], ["simPoliticaGiro", "(nenhuma: usa a de caminhada)"]]) {
-      const atual = $(id).value;
+      const atual = $(id).options.length ? $(id).value : lembrada(id);
       $(id).innerHTML = `<option value="">${vazio}</option>` + itens;
       if (opcoes.some((e) => e.nome === atual)) $(id).value = atual;
+    }
+  }
+
+  // a simulacao pode ter sido ligada por outra janela: a aba mostra o que o servidor esta rodando
+  function sincronizar(mj) {
+    if (performance.now() - ultimaTroca < 1500) return;   // quadros que ja estavam a caminho
+    $("simLigar").checked = true;
+    for (const [id, v] of [["simPolitica", mj.politica], ["simPoliticaGiro", mj.politica_giro]]) {
+      if (document.activeElement === $(id) || $(id).value === (v ?? "")) continue;
+      if ([...$(id).options].some((o) => o.value === (v ?? ""))) { $(id).value = v ?? ""; lembrar(id, v); }
     }
   }
 
@@ -239,9 +259,14 @@ export function iniciarTreino({ enviar, online, aviso }) {
     },
     estado(mj) {
       if (!mj) {
-        if ($("simLigar").checked && online()) $("simInfo").innerHTML = "";
+        if ($("simLigar").checked && online()) {
+          $("simInfo").innerHTML = "";
+          // desligada pelo servidor (ou por outra janela); ligar a primeira vez leva alguns segundos
+          if (performance.now() - ultimaTroca > 10000) $("simLigar").checked = false;
+        }
         return;
       }
+      sincronizar(mj);
       if (mj.ativa === "poses") {
         const linhas = {
           "Tempo": `${mj.t.toFixed(1)} s${mj.caiu ? " · CAIU (reiniciar)" : ""}`,
