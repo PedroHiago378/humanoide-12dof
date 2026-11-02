@@ -322,10 +322,17 @@
 
   <div class="aba" id="abaSim" hidden>
     <h2>Simulacao MuJoCo</h2>
-    <p class="dica">Robo livre no chao, com fisica e a politica de RL escolhida. Enquanto liga, os servos reais nao seguem.</p>
+    <p class="dica">Robo livre no chao, com fisica, movido pela politica de RL ou pelas poses e animacoes da aba Controle. Enquanto liga, os servos reais nao seguem.</p>
     <div class="linha">
       <label class="chk"><input type="checkbox" id="simLigar"> simular robo livre</label>
       <label class="chk"><input type="checkbox" id="simSeguir" checked> camera segue</label>
+    </div>
+    <div class="linha" style="margin-top:6px">
+      <span class="sub">quem move</span>
+      <select id="simModo" style="flex:1;min-width:0" title="Poses: sliders, poses e animacoes da aba Controle movem o robo livre, com a fisica">
+        <option value="politica">politica de RL</option>
+        <option value="poses">poses e animacoes (aba Controle)</option>
+      </select>
     </div>
     <div class="linha" style="margin-top:6px">
       <span class="sub">politica</span>

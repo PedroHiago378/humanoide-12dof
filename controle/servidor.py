@@ -37,6 +37,8 @@ class Nucleo:
         self.equilibrio = Equilibrio(robo)
         self.sim_mj = None         # SimMuJoCo (aba Simulacao e treino), criado ao ligar
         self.sim_mj_ativo = False
+        self.sim_mj_poses = False  # True: poses/animacoes/sliders movem o robo livre em vez da politica
+        self._reinicios_poses = None
         self.trava_rl = asyncio.Lock()
         try:
             from .rl_servico import ServicoTreino
@@ -151,18 +153,28 @@ class Nucleo:
                 if self._coleta_imu is not None:
                     self._coleta_imu.append((t_ms, acel, giro))
             if self.sim_mj_ativo:
-                # simulacao MuJoCo: o robo livre (politica de RL) substitui o controlador e os servos
+                # simulacao MuJoCo: o robo livre (politica de RL ou poses) substitui os servos
                 try:
-                    self.sim_mj.passo()
+                    q_alvo = None
+                    if self.sim_mj_poses:   # o controlador da aba Controle da os alvos; o MuJoCo, a fisica
+                        if self.sim_mj.reinicios != self._reinicios_poses:
+                            _poses_da_sim(self)   # reiniciou ou recriou: parte da pose nova, sem pulo
+                            await self.difundir(self.info())
+                        q_ref = self.avancar(periodo)
+                        q_alvo = (self.sim.estado.q if q_ref is None else q_ref)[self._idx_mj]
+                    self.sim_mj.passo(q_alvo)
                     mj = self.sim_mj.estado()
                 except Exception as e:   # erro na simulacao nao pode parar o laco
                     logging.getLogger("humanoide").exception("simulacao MuJoCo")
                     self.sim_mj_ativo = False
                     await self.difundir({"tipo": "aviso", "texto": f"simulacao MuJoCo: {e}"})
                     continue
-                await self.difundir({"tipo": "estado", "t": mj["info"]["t"], "controlador": "MuJoCo",
-                                     "fonte": "MuJoCo", "q": mj["q"], "base": mj["base"], "mujoco": mj["info"],
-                                     "hw": self.hw_estado(), "eq": None, "anim": None})
+                poses = self.sim_mj_poses
+                await self.difundir({"tipo": "estado", "t": mj["info"]["t"],
+                                     "controlador": self.ctrl.nome if poses else "MuJoCo",
+                                     "fonte": "MuJoCo" + (" (poses)" if poses else ""), "q": mj["q"],
+                                     "base": mj["base"], "mujoco": mj["info"], "hw": self.hw_estado(), "eq": None,
+                                     "anim": self.ctrl.estado_ui() if poses and hasattr(self.ctrl, "estado_ui") else None})
                 proximo += periodo
                 await asyncio.sleep(max(0.0, proximo - time.perf_counter()))
                 if time.perf_counter() - proximo > 0.5:
@@ -263,6 +275,23 @@ async def tratar_rl(nucleo, ws, msg):
         await _tratar_rl(nucleo, ws, msg)
 
 
+async def _criar_sim(nucleo):
+    if nucleo.sim_mj is None:
+        from .sim_mujoco import JUNTAS, SimMuJoCo
+        nucleo._idx_mj = [nucleo.robo.nomes.index(n) for n in JUNTAS]   # ordem do programa -> ordem do MuJoCo
+        nucleo.sim_mj = await asyncio.to_thread(SimMuJoCo)
+
+
+def _poses_da_sim(nucleo):
+    """O controle manual parte da pose atual do robo livre (sem pulo ao trocar politica -> poses)."""
+    e = nucleo.sim_mj.env
+    q = nucleo.sim.estado.q.copy()
+    q[nucleo._idx_mj] = e.data.qpos[e.qadr]
+    nucleo.sim.reiniciar(q)
+    nucleo.trocar("manual")
+    nucleo._reinicios_poses = nucleo.sim_mj.reinicios
+
+
 async def _tratar_rl(nucleo, ws, msg):
     tipo = msg["tipo"]
     treino = nucleo.treino
@@ -270,27 +299,29 @@ async def _tratar_rl(nucleo, ws, msg):
         if treino is None:
             raise RuntimeError(f"simulacao indisponivel: {getattr(nucleo, 'erro_rl', '')}")
         if tipo == "sim_ligar":
-            if msg["ligado"] and nucleo.sim_mj is None:
-                from .sim_mujoco import SimMuJoCo
-                nucleo.sim_mj = await asyncio.to_thread(SimMuJoCo)
             if msg["ligado"]:
+                await _criar_sim(nucleo)
                 nucleo.hw_seguir = False    # o robo real nao segue a simulacao
             nucleo.sim_mj_ativo = bool(msg["ligado"])
+        elif tipo == "sim_modo":
+            poses = msg.get("modo") == "poses"
+            if nucleo.sim_mj:
+                nucleo.sim_mj.poses = poses
+            if poses and nucleo.sim_mj:
+                _poses_da_sim(nucleo)
+                await nucleo.difundir(nucleo.info())
+            nucleo.sim_mj_poses = poses
         elif tipo == "sim_politica":
             caminho = treino.politica(msg["nome"]) if msg.get("nome") else None
             if caminho and not os.path.exists(caminho):
                 caminho = await asyncio.to_thread(treino.exportar, msg["nome"])
-            if nucleo.sim_mj is None:
-                from .sim_mujoco import SimMuJoCo
-                nucleo.sim_mj = await asyncio.to_thread(SimMuJoCo)
+            await _criar_sim(nucleo)
             await asyncio.to_thread(nucleo.sim_mj.carregar, caminho)
         elif tipo == "sim_politica_giro":
             caminho = treino.politica(msg["nome"]) if msg.get("nome") else None
             if caminho and not os.path.exists(caminho):
                 caminho = await asyncio.to_thread(treino.exportar, msg["nome"])
-            if nucleo.sim_mj is None:
-                from .sim_mujoco import SimMuJoCo
-                nucleo.sim_mj = await asyncio.to_thread(SimMuJoCo)
+            await _criar_sim(nucleo)
             await asyncio.to_thread(nucleo.sim_mj.carregar_giro, caminho)
         elif tipo == "sim_config" and nucleo.sim_mj:
             await asyncio.to_thread(nucleo.sim_mj.configurar, msg.get("vx"), msg.get("massa"), msg.get("empurroes"),

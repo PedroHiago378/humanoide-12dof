@@ -25,10 +25,15 @@ export function iniciarTreino({ enviar, online, aviso }) {
     if (!exigeServidor()) { e.target.checked = false; return; }
     enviar({ tipo: "sim_ligar", ligado: e.target.checked });
     if (e.target.checked) {
+      enviar({ tipo: "sim_modo", modo: $("simModo").value });
       enviar({ tipo: "sim_config", ...comando(), massa: +$("simMassa").value, empurroes: $("simEmpurroes").checked });
       enviar({ tipo: "sim_politica", nome: $("simPolitica").value || null });
       if ($("simPoliticaGiro").value) enviar({ tipo: "sim_politica_giro", nome: $("simPoliticaGiro").value });
     }
+  };
+  $("simModo").onchange = () => {
+    if (online()) enviar({ tipo: "sim_modo", modo: $("simModo").value });
+    if ($("simModo").value === "poses") aviso("Use os sliders, poses e animacoes da aba Controle (com \"comandar\" marcado).");
   };
   $("simPolitica").onchange = () => {
     if (!exigeServidor()) return;
@@ -235,6 +240,17 @@ export function iniciarTreino({ enviar, online, aviso }) {
     estado(mj) {
       if (!mj) {
         if ($("simLigar").checked && online()) $("simInfo").innerHTML = "";
+        return;
+      }
+      if (mj.ativa === "poses") {
+        const linhas = {
+          "Tempo": `${mj.t.toFixed(1)} s${mj.caiu ? " · CAIU (reiniciar)" : ""}`,
+          "Quem move": "poses e animacoes (aba Controle)",
+          "Velocidade": `${(mj.vx * 100).toFixed(1)} cm/s · giro ${(mj.giro * 180 / Math.PI).toFixed(0)} °/s`,
+          "Distancia": `${(mj.dist * 100).toFixed(1)} cm`,
+          "Massa": `${(mj.massa * 1000).toFixed(0)} g`,
+        };
+        $("simInfo").innerHTML = Object.entries(linhas).map(([k, v]) => `<b>${k}</b><span>${v}</span>`).join("");
         return;
       }
       const linhas = {

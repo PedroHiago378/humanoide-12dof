@@ -5,11 +5,15 @@ entao nao precisa de PyTorch. O servidor chama passo() a 50 Hz e manda pose + ju
 
 Duas politicas: a de caminhada e, opcional, uma so de giro (rl/configs/giro.json). Quando o
 comando e so girar, a de giro assume, com o filtro, a escala da acao e a passada do treino dela.
+
+Sem politica, passo(q_alvo) leva as juntas aos angulos pedidos (poses, animacoes, sliders) e a
+fisica decide o resto: o robo pode se equilibrar, escorregar ou cair.
 """
 import json
 import os
 import sys
 
+import mujoco
 import numpy as np
 
 from .modelo import RAIZ
@@ -40,6 +44,7 @@ class SimMuJoCo:
         self.massa = 1.0
         self.empurroes = False
         self.ativa = "caminhada"
+        self.poses = False   # True: o servidor manda as juntas (poses); reinicia sem ruido
         self._criar()
 
     def _criar(self):
@@ -50,7 +55,9 @@ class SimMuJoCo:
         cfg.update({"randomizar": r, "empurrao": None if not self.empurroes else {
             "intervalo": [2.0, 4.0], "duracao": 0.1, "acel": [0.5, 2.5]}, "duracao": 1e9,
             "comando": {"omni": omni, "trocar": [1e9, 1e9]}})   # o comando vem do programa
-        self.env = HumanoideAndar(cfg, render_mode="rgb_array" if self.video else None, visual=self.video)
+        env = HumanoideAndar(cfg, render_mode="rgb_array" if self.video else None, visual=self.video)
+        env.reset()   # pronto antes de trocar: o laco do servidor chama passo() de outra thread
+        self.env = env
         self.ativa = "caminhada"
         self._base = {k: self.env.cfg[k] for k in AJUSTES_DA_POLITICA}
         self.reiniciar()
@@ -84,11 +91,27 @@ class SimMuJoCo:
 
     def reiniciar(self):
         self.obs, _ = self.env.reset(seed=int(np.random.randint(1 << 30)))
+        if self.poses:
+            self._pose_exata()
         self.env.cmd[:] = self.cmd
         self.obs = self.env._obs()
         self.inicio = self.env.data.qpos[:2].copy()
         self.caiu = False
         self.t = 0.0
+        self.reinicios = getattr(self, "reinicios", 0) + 1   # o servidor ressincroniza as poses
+
+    def _pose_exata(self):
+        """Reset do treino tem ruido de alguns graus nas juntas; parado, sem politica, isso derruba o robo."""
+        e = self.env
+        m, d = e.model, e.data
+        d.qpos[e.qadr] = np.clip(e.q0, e.ctrl_lim[:, 0], e.ctrl_lim[:, 1])
+        d.qvel[:] = 0.0
+        d.ctrl[e.atuador] = d.qpos[e.qadr]
+        mujoco.mj_forward(m, d)
+        fundo = min(d.geom_xpos[g][2] - m.geom_size[g][2] for g in e.geom_pes)
+        d.qpos[2] -= fundo - 0.0005
+        mujoco.mj_forward(m, d)
+        self.inicio = d.qpos[:2].copy()
 
     def empurrar(self, forca_rel=1.5):
         """Empurrao para frente/lado aleatorio, proporcional ao peso (m/s2 * massa)."""
@@ -108,7 +131,14 @@ class SimMuJoCo:
                 self.env.cfg[k] = cfg.get(k, self._base[k])
         return self.politica_giro if nome == "giro" else self.politica
 
-    def passo(self):
+    def passo(self, q_alvo=None):
+        """q_alvo (rad, ordem de JUNTAS): segue a pose em vez da politica e continua mesmo depois de cair."""
+        if q_alvo is not None:
+            self.ativa = "poses"
+            self._passo_poses(np.asarray(q_alvo, float))
+            return
+        if self.ativa == "poses":   # voltou para a politica: o ambiente volta aos ajustes do treino
+            self.ativa = None
         if self.caiu:
             return
         e = self.env
@@ -121,6 +151,14 @@ class SimMuJoCo:
         if not self.empurroes:   # sem empurroes automaticos o ambiente nao aplica a forca; aplica aqui
             e.data.xfrc_applied[e.torso, :3] = e.forca_empurrao if e.data.time < e.fim_empurrao else 0.0
         self.obs, _, self.caiu, _, self.info = e.step(acao)
+        self.t += e.dt
+
+    def _passo_poses(self, q_alvo):
+        e = self.env
+        e.data.ctrl[e.atuador] = np.clip(q_alvo, e.ctrl_lim[:, 0], e.ctrl_lim[:, 1])
+        e.data.xfrc_applied[e.torso, :3] = e.forca_empurrao if e.data.time < e.fim_empurrao else 0.0
+        mujoco.mj_step(e.model, e.data, nstep=e.n_sub)
+        self.caiu = e._caiu()
         self.t += e.dt
 
     def estado(self):
