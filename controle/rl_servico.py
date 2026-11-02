@@ -7,20 +7,29 @@ O treino continua mesmo se o programa for fechado; ao abrir de novo ele e reconh
 """
 import copy
 import glob
+import io
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
 import time
+import zipfile
 
 from .modelo import DADOS, RAIZ
+from .politica_rl import PoliticaNumpy
 
 CONGELADO = getattr(sys, "frozen", False)
 BASE_RL = os.path.normpath(os.path.join(DADOS, "rl") if CONGELADO else os.path.join(RAIZ, "rl"))
 EXECUCOES = os.path.join(BASE_RL, "execucoes")
 ARQ_CONFIG = os.path.join(DADOS, "rl_config.json")
 IMPORTS = "import stable_baselines3, torch, mujoco, gymnasium"
+
+
+def _nome_seguro(nome):
+    """Nome de pasta sem caminho nem caracteres estranhos (vem de arquivo recebido)."""
+    return re.sub(r"[^A-Za-z0-9_.-]", "_", str(nome or "")).strip("._")[:60]
 
 
 def _sem_janela():
@@ -214,7 +223,7 @@ class ServicoTreino:
             nome = os.path.basename(os.path.dirname(pasta))
             p = self._progresso(nome) or {}
             tem_modelo = any(glob.glob(os.path.join(pasta, pad)) for pad in ("modelo_*.zip", "checkpoint_*.zip"))
-            if not p and not tem_modelo:
+            if not p and not tem_modelo and not os.path.exists(self.politica(nome)):   # importada: so o .npz
                 continue
             out.append({"nome": nome, "passos": p.get("passos"), "total": p.get("total"),
                         "estado": "treinando" if nome == self.ativo and self.rodando() else p.get("estado", "-"),
@@ -223,6 +232,65 @@ class ServicoTreino:
                         "videos": sorted(os.path.basename(v) for v in glob.glob(os.path.join(pasta, "*.mp4"))),
                         "data": os.path.getmtime(pasta)})
         return out
+
+    # ------------------------------------------------------------------ levar politicas para outro PC
+    def pacote(self, nome):
+        """Zip com politica.npz + config.json (o ambiente do treino) + info.json, para outro PC."""
+        pasta = os.path.join(EXECUCOES, _nome_seguro(nome))
+        if not os.path.exists(os.path.join(pasta, "politica.npz")):
+            raise RuntimeError(f"{nome} nao tem politica.npz (exporte antes)")
+        p = self._progresso(nome) or {}
+        info = {"nome": nome, "passos": PoliticaNumpy(os.path.join(pasta, "politica.npz")).passos,
+                "vx": p.get("vx"), "exportado": time.strftime("%Y-%m-%d %H:%M")}
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+            for arq in ("politica.npz", "config.json"):
+                if os.path.exists(os.path.join(pasta, arq)):
+                    z.write(os.path.join(pasta, arq), arq)
+            z.writestr("info.json", json.dumps(info, indent=1))
+        return buf.getvalue()
+
+    def importar(self, nome_arquivo, dados, nome=None):
+        """Recebe um .zip de pacote() ou um politica.npz solto; cria uma execucao nova com ele."""
+        config = None
+        if zipfile.is_zipfile(io.BytesIO(dados)) and not nome_arquivo.lower().endswith(".npz"):
+            with zipfile.ZipFile(io.BytesIO(dados)) as z:
+                nomes = {os.path.basename(n): n for n in z.namelist() if not n.endswith("/")}
+                if "politica.npz" not in nomes:
+                    raise RuntimeError("o zip nao tem politica.npz")
+                if sum(i.file_size for i in z.infolist()) > 50e6:
+                    raise RuntimeError("arquivo grande demais para uma politica")
+                npz = z.read(nomes["politica.npz"])
+                if "config.json" in nomes:
+                    config = json.loads(z.read(nomes["config.json"]))
+                if not nome and "info.json" in nomes:
+                    nome = json.loads(z.read(nomes["info.json"])).get("nome")
+        else:
+            npz = dados
+        if config is not None and not isinstance(config, dict):
+            raise RuntimeError("config.json invalido")
+        base = _nome_seguro(nome or os.path.splitext(os.path.basename(nome_arquivo))[0]) or "politica"
+        final, i = base, 2
+        while os.path.exists(os.path.join(EXECUCOES, final)):
+            final, i = f"{base}_{i}", i + 1
+        pasta = os.path.join(EXECUCOES, final)
+        os.makedirs(pasta)
+        try:
+            with open(os.path.join(pasta, "politica.npz"), "wb") as fp:
+                fp.write(npz)
+            pol = PoliticaNumpy(os.path.join(pasta, "politica.npz"))   # confere se e mesmo uma politica
+            entrada, saida = pol.camadas[0][0].shape[1], pol.camadas[-1][0].shape[0]
+            if entrada not in (45, 47) or saida != 12:
+                raise RuntimeError(f"politica de outro robo (entrada {entrada}, saida {saida})")
+            if config is not None:
+                with open(os.path.join(pasta, "config.json"), "w", encoding="utf-8") as fp:
+                    json.dump(config, fp, indent=1)
+        except Exception as e:
+            shutil.rmtree(pasta, ignore_errors=True)
+            if isinstance(e, RuntimeError):
+                raise
+            raise RuntimeError("nao e uma politica valida (precisa ser o politica.npz do exportar)") from e
+        return final, config is not None
 
     def exportar(self, nome):
         """Gera politica.npz de uma execucao antiga (precisa do Python externo)."""

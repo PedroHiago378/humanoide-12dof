@@ -175,6 +175,48 @@ export function iniciarTreino({ enviar, online, aviso }) {
     });
   }
 
+  // ------------------------------------------------------------------ aba Politicas: exportar / receber
+  function desenharListaPoliticas() {
+    const lista = execucoes.filter((e) => e.politica || e.modelo);
+    $("polLista").innerHTML = lista.length === 0 ? "<tr><td class='sub'>nenhuma politica ainda</td></tr>" :
+      `<tr><th>politica</th><th>passos</th><th></th></tr>` + lista.map((e) => `<tr>
+        <td>${e.nome}<br><span class="sub">${new Date(e.data * 1000).toLocaleDateString()}</span></td><td>${fmtM(e.passos)}</td>
+        <td>${e.politica ? `<a href="/politicas/${encodeURIComponent(e.nome)}.zip" download="${e.nome}.zip"><button>exportar .zip</button></a>`
+          : `<button data-gerar="${e.nome}" title="Gera o politica.npz a partir do modelo (precisa do Python do treino)">gerar .npz</button>`}</td></tr>`).join("");
+    $("polLista").querySelectorAll("button[data-gerar]").forEach((b) => {
+      b.onclick = () => { aviso("Gerando politica.npz..."); enviar({ tipo: "rl_exportar", nome: b.dataset.gerar }); };
+    });
+  }
+
+  async function receber(arquivo) {
+    if (!arquivo) return;
+    if (!exigeServidor()) return;
+    $("polStatus").textContent = `enviando ${arquivo.name}...`;
+    const form = new FormData();
+    form.append("arquivo", arquivo);
+    if ($("polNome").value.trim()) form.append("nome", $("polNome").value.trim());
+    try {
+      const r = await fetch("/politicas/importar", { method: "POST", body: form });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.erro || r.statusText);
+      $("polStatus").textContent = `recebida como "${j.nome}"${j.config ? "" : " (sem config.json: ambiente padrao)"}. Ja aparece na aba Simulacao.`;
+      $("polNome").value = "";
+    } catch (e) {
+      $("polStatus").textContent = `nao recebida: ${e.message}`;
+    }
+    $("polArquivo").value = "";
+  }
+  $("polSoltar").onclick = () => $("polArquivo").click();
+  $("polSoltar").onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") $("polArquivo").click(); };
+  $("polArquivo").onchange = () => receber($("polArquivo").files[0]);
+  $("polSoltar").ondragover = (e) => { e.preventDefault(); $("polSoltar").classList.add("sobre"); };
+  $("polSoltar").ondragleave = () => $("polSoltar").classList.remove("sobre");
+  $("polSoltar").ondrop = (e) => {
+    e.preventDefault();
+    $("polSoltar").classList.remove("sobre");
+    receber(e.dataTransfer.files[0]);
+  };
+
   function desenharGrafico() {
     const c = $("rlGrafico");
     const r = c.getBoundingClientRect();
@@ -248,6 +290,7 @@ export function iniciarTreino({ enviar, online, aviso }) {
         execucoes = msg.execucoes;
         desenharExecucoes();
         desenharPoliticas();
+        desenharListaPoliticas();
       } else if (msg.tipo === "rl_config") {
         config = msg.config;
         padrao = msg.padrao;

@@ -109,6 +109,13 @@
   #rlExecucoes td { padding: 3px; border-top: 1px solid var(--borda); cursor: pointer; }
   #rlExecucoes tr.sel td { background: #24324a; }
   #rlExecucoes td button { padding: 1px 6px; font-size: 11px; }
+  #polLista { width: 100%; border-collapse: collapse; font-size: 11.5px; font-variant-numeric: tabular-nums; }
+  #polLista th { color: var(--fraco); font-weight: 500; text-align: left; padding: 2px 3px; }
+  #polLista td { padding: 3px; border-top: 1px solid var(--borda); }
+  #polLista td button { padding: 1px 6px; font-size: 11px; }
+  .soltar { margin-top: 6px; padding: 14px 8px; border: 1px dashed var(--borda); border-radius: 6px; text-align: center;
+    cursor: pointer; font-size: 12px; }
+  .soltar.sobre { border-color: var(--acento); background: #24324a; }
   #rlLog { margin: 6px 0 0; max-height: 90px; overflow: auto; font-size: 10.5px; color: var(--fraco);
     background: #161a20; border-radius: 4px; padding: 4px 6px; white-space: pre-wrap; }
   .eixo { border-top: 1px solid var(--borda); margin-top: 8px; padding-top: 6px; }
@@ -200,6 +207,7 @@
   <nav class="abas">
     <button class="ativo" data-aba="abaControle">Controle</button>
     <button data-aba="abaSim">Simulacao e treino</button>
+    <button data-aba="abaPoliticas">Politicas</button>
   </nav>
   <div class="aba" id="abaControle">
 
@@ -401,6 +409,20 @@
     </details>
     <pre id="rlLog"></pre>
   </div><!-- abaSim -->
+
+  <div class="aba" id="abaPoliticas" hidden>
+    <h2>Exportar</h2>
+    <p class="dica">Baixa um .zip com a politica (politica.npz) e o ambiente do treino (config.json), para usar em outro PC ou guardar.</p>
+    <table id="polLista"></table>
+    <h2>Receber</h2>
+    <p class="dica">Aceita o .zip exportado por outro programa ou um politica.npz solto (sem o config.json a simulacao usa o ambiente padrao).</p>
+    <div class="linha">
+      <input type="text" id="polNome" placeholder="nome (opcional)" style="flex:1;min-width:0">
+    </div>
+    <div id="polSoltar" class="soltar" tabindex="0">arraste o arquivo aqui ou clique para escolher<br><span class="sub">.zip ou .npz</span></div>
+    <input type="file" id="polArquivo" accept=".zip,.npz" hidden>
+    <div class="sub" id="polStatus" style="margin-top:6px"></div>
+  </div><!-- abaPoliticas -->
 
   <h2>Exibir</h2>
   <div class="linha">

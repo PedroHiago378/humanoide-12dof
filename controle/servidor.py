@@ -427,8 +427,33 @@ def criar_app(nucleo, porta_serial=None):
         app["status"].cancel()
         await nucleo.hw_desconectar()
 
-    app = web.Application()
+    async def baixar_politica(request):
+        nome = request.match_info["nome"]
+        try:
+            dados = await asyncio.to_thread(nucleo.treino.pacote, nome)
+        except RuntimeError as e:
+            raise web.HTTPNotFound(text=str(e))
+        return web.Response(body=dados, content_type="application/zip",
+                            headers={"Content-Disposition": f'attachment; filename="{nome}.zip"'})
+
+    async def receber_politica(request):
+        form = await request.post()
+        arq = form.get("arquivo")
+        if not isinstance(arq, web.FileField):
+            return web.json_response({"erro": "nenhum arquivo"}, status=400)
+        try:
+            nome, com_config = await asyncio.to_thread(nucleo.treino.importar, arq.filename, arq.file.read(),
+                                                       form.get("nome") or None)
+        except (RuntimeError, ValueError) as e:
+            return web.json_response({"erro": str(e)}, status=400)
+        await nucleo.difundir({"tipo": "rl_lista", "execucoes": await asyncio.to_thread(nucleo.treino.listar)})
+        return web.json_response({"nome": nome, "config": com_config})
+
+    app = web.Application(client_max_size=60 * 1024 ** 2)
     app.router.add_get("/ws", ws_handler)
+    if nucleo.treino:   # aba Politicas: levar/trazer politicas treinadas entre PCs
+        app.router.add_get("/politicas/{nome}.zip", baixar_politica)
+        app.router.add_post("/politicas/importar", receber_politica)
     app.router.add_get("/", lambda r: web.HTTPFound("/visualizador/index.html"))
     app.router.add_get("/visualizador/", lambda r: web.HTTPFound("/visualizador/index.html"))
     for pasta in ("visualizador", "modelo", "config"):
